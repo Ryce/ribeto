@@ -16,17 +16,13 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v1
 
-    - name: Build Docker image
-      run: docker build -t api:latest ./api
+    - name: Log in to Docker Hub
+      run: echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_HUB_USERNAME }}" --password-stdin
 
-    - name: Save Docker image to a file
-      run: docker save api:latest -o api_latest.tar
-
-    - name: Upload Docker image as artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: api_latest
-        path: api_latest.tar
+    - name: Build and push Docker image
+      run: |
+        docker build -t benzyr/ribeto:latest ./api
+        docker push benzyr/ribeto:latest
 
   deploy:
     needs: build
@@ -35,12 +31,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
-
-    - name: Download Docker image artifact
-      uses: actions/download-artifact@v2
-      with:
-        name: api_latest
-        path: api_latest.tar
 
     - name: Install AWS CLI
       run: |
@@ -55,11 +45,10 @@ jobs:
 
     - name: Deploy to EC2
       run: |
-        scp -i ${{ secrets.EC2_KEY }} -o StrictHostKeyChecking=no api_latest.tar ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USER }}/api_latest.tar
         ssh -i ${{ secrets.EC2_KEY }} -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-          docker load -i /home/${{ secrets.EC2_USER }}/api_latest.tar
+          docker pull benzyr/ribeto:latest
           docker stop api || true
           docker rm api || true
-          docker run -d --name api -p 8080:8080 api:latest
+          docker run -d --name api -p 8080:8080 benzyr/ribeto:latest
         EOF
 
